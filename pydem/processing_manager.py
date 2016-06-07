@@ -641,6 +641,7 @@ class ProcessManager(object):
             elev_source_files = self.elev_source_files
         for i, esfile in enumerate(elev_source_files):
             try:
+            #if 1:
                 fn, status = self.calculate_twi(esfile,
                                                 save_path=self.save_path,
                                                 do_edges=do_edges,
@@ -649,6 +650,8 @@ class ProcessManager(object):
                     self.twi_status[i] = status
                 else:
                     self.twi_status[index] = status
+            #try:
+            #    pass
             except:
                 lckfn = _get_lockfile_name(esfile)
                 try:
@@ -755,6 +758,7 @@ class ProcessManager(object):
             print fn, 'is locked'
             return fn, "Locked"
         else:  # lock this tile
+            print "Creating lockfile", lckfn
             fid = file(lckfn, 'w')
             fid.close()
 
@@ -785,8 +789,23 @@ class ProcessManager(object):
         fn_mag = dem_proc.get_full_fn('mag', save_path)
         if os.path.exists(fn_ang + '.npz') and os.path.exists(fn_mag + '.npz')\
                 and not self.overwrite_cache:
-            dem_proc.load_direction(fn_ang)
-            dem_proc.load_slope(fn_mag)
+            try:
+                dem_proc.load_direction(fn_ang)
+                dem_proc.load_slope(fn_mag)
+            except Exception, e:
+                print "LOADING EXCEPTION", e
+                try:
+                    os.remove(fn_ang)
+                except:
+                    pass
+                try:
+                    os.remove(fn_mag)
+                except:
+                    pass
+                dem_proc.calc_slopes_directions()
+                dem_proc.save_slope(save_path, raw=True)
+                dem_proc.save_direction(save_path, raw=True)
+
             dem_proc.find_flats()
         else:
             if os.path.exists(fn_ang + '.npz') and os.path_exists(fn_mag + '.npz')\
@@ -797,8 +816,8 @@ class ProcessManager(object):
             dem_proc.save_slope(save_path, raw=True)
             dem_proc.save_direction(save_path, raw=True)
         if self._DEBUG:
-            dem_proc.save_slope(save_path, as_int=False)
-            dem_proc.save_direction(save_path, as_int=False)
+            dem_proc.save_slope(save_path, as_int=True)
+            dem_proc.save_direction(save_path, as_int=True)
 
         if skip_uca_twi:
             # remove lock file
@@ -816,12 +835,15 @@ class ProcessManager(object):
         # Check if uca data exists (if yes, we are in the
         # edge-resolution round)
         uca_init = None
-        if os.path.exists(fn_uca + '.npz'):
-            if os.path.exists(fn_uca_ec + '.npz'):
-                dem_proc.load_uca(fn_uca_ec)
-            else:
-                dem_proc.load_uca(fn_uca)
-            uca_init = dem_proc.uca
+        try:
+            if os.path.exists(fn_uca + '.npz'):
+                if os.path.exists(fn_uca_ec + '.npz'):
+                    dem_proc.load_uca(fn_uca_ec)
+                else:
+                    dem_proc.load_uca(fn_uca)
+                uca_init = dem_proc.uca
+        except Exception, e:
+            print "LOADING EXCEPTION", e
 
         if do_edges or uca_init is None:
             dem_proc.calc_uca(uca_init=uca_init,
@@ -832,7 +854,8 @@ class ProcessManager(object):
                 dem_proc.save_uca(save_path, raw=True)
                 if self._DEBUG:
                     # Also save a geotiff for debugging
-                    dem_proc.save_uca(save_path, as_int=False)
+                    # dem_proc.save_uca(save_path, as_int=False)
+                    pass
             else:
                 if os.path.exists(fn_uca_ec):
                     os.remove(fn_uca_ec)
@@ -840,7 +863,7 @@ class ProcessManager(object):
                                     save_path, raw=True)
                 if self._DEBUG:
                     dem_proc.save_array(dem_proc.uca, None, 'uca_edge_corrected',
-                                        save_path, as_int=False)
+                                        save_path, as_int=True)
             # Saving Edge Data, and updating edges
             self.tile_edge.update_edges(esfile, dem_proc)
 
@@ -866,7 +889,7 @@ class ProcessManager(object):
                    'GTiff', '-co', 'compress=lzw', '-co', 'TILED=YES',
                    esfile, fn]
             print '<'*8, ' '.join(cmd), '>'*8
-            status = subprocess.call(cmd)
+            status = subprocess.call(cmd, shell=True)
             return status
         self.process_command(command, 'hillshade', index)
 

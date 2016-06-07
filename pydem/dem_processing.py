@@ -500,10 +500,10 @@ class DEMProcessor(object):
     uca_saturation_limit = 32  # units of area
     twi_min_slope = 1e-3  # Used for TWI max limiting
     twi_min_area = np.inf  # Finds min area in tile
-    chunk_size_slp_dir = 512  # Size of chunk (without overlaps)
+    chunk_size_slp_dir = 4000 # Size of chunk (without overlaps)
     # This has to be > 1 to avoid edge effects for flats
     chunk_overlap_slp_dir = 4  # Overlap when calculating magnitude/directions
-    chunk_size_uca = 512  # Size of chunks when calculating UCA
+    chunk_size_uca = 4000 # Size of chunks when calculating UCA
     chunk_overlap_uca = 32  # Number of overlapping pixels for UCA calculation
     # Mostly deprecated, but maximum number of iterations used to try and
     # resolve circular drainage patterns (which should never occur)
@@ -649,15 +649,19 @@ class DEMProcessor(object):
                 cmd = "gdalwarp -multi -wm 2000 -co BIGTIFF=YES -of GTiff -co compress=lzw -co TILED=YES -wo OPTIMIZE_SIZE=YES -r near -t_srs %s %s %s" \
                     % (self.save_projection, tmp_file, fnl_file)
             print "<<"*4, cmd, ">>"*4
-            subprocess.call(cmd)
+            subprocess.call(cmd, shell=True)
             os.remove(tmp_file)
         else:
             np.savez_compressed(fnl_file, array)
 
-    def save_uca(self, rootpath, raw=False, as_int=False):
+    def save_uca(self, rootpath, raw=False, as_int=True):
         """ Saves the upstream contributing area to a file
         """
-        self.save_array(self.uca, None, 'uca', rootpath, raw, as_int=as_int)
+        if raw:
+            arr = self.uca
+        else:
+            arr = self.uca.astype(int)
+        self.save_array(arr, None, 'uca', rootpath, raw, as_int=as_int)
 
     def save_twi(self, rootpath, raw=False, as_int=True):
         """ Saves the topographic wetness index to a file
@@ -668,17 +672,29 @@ class DEMProcessor(object):
         self.twi[self.flats] = 0
         self.twi.mask[self.flats] = True
         # self.twi = self.flats
-        self.save_array(self.twi, None, 'twi', rootpath, raw, as_int=as_int)
+        if raw:
+            arr = self.twi
+        else:
+            arr = (self.twi * 1024)
+        self.save_array(arr, None, 'twi', rootpath, raw, as_int=as_int)
 
-    def save_slope(self, rootpath, raw=False, as_int=False):
+    def save_slope(self, rootpath, raw=False, as_int=True):
         """ Saves the magnitude of the slope to a file
         """
-        self.save_array(self.mag, None, 'mag', rootpath, raw, as_int=as_int)
+        if raw:
+            arr = self.mag
+        else:
+            arr = (self.mag * 2048).astype(int)
+        self.save_array(arr, None, 'mag', rootpath, raw, as_int=as_int)
 
-    def save_direction(self, rootpath, raw=False, as_int=False):
+    def save_direction(self, rootpath, raw=False, as_int=True):
         """ Saves the direction of the slope to a file
         """
-        self.save_array(self.direction, None, 'ang', rootpath, raw, as_int=as_int)
+        if raw:
+            arr = self.direction
+        else:
+            arr = (self.direction / np.pi * 1800).astype(int)
+        self.save_array(arr, None, 'ang', rootpath, raw, as_int=as_int)
 
     def save_outputs(self, rootpath='.', raw=False):
         """Saves TWI, UCA, magnitude and direction of slope to files.
@@ -2016,8 +2032,8 @@ class DEMProcessor(object):
             twi_sat_value = \
                 np.log(self.uca_saturation_limit * min_area / min_slope)
             twi[twi > twi_sat_value] = twi_sat_value
-        # multiply by 10 for better integer resolution when storing
-        self.twi = twi * 10
+        # multiply by 256 for better integer resolution when storing
+        self.twi = twi # * 256
 
         gc.collect()  # Just in case
         return twi
